@@ -1,6 +1,13 @@
-;;; gptel-agent-parsers.el --- Parse text files into gptel agents -*- lexical-binding: t -*-
+;;; gptel-agent.el --- Agentic LLM use for gptel -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2025 Karthik Chikmagalur
+
+;; Version: 0.0.1
+;; Package-Requires: ((emacs "28.1") (gptel "0.9.9") (yaml "1.2.0"))
+;; Keywords: convenience, tools
+;; URL: https://github.com/karthink/gptel-agent
+
+;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -12,21 +19,54 @@
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
 
+;; You should have received a copy of the GNU General Public License
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+;; This file is NOT part of GNU Emacs.
+
 ;;; Commentary:
 
-;; Parsing utilities for gptel subagent definition files, from
-;; - Markdown files with YAML frontmatter
-;; - Org files with PROPERTIES blocks
-
+;; Agentic use mode for gptel: This is a collection of tools and prompts for
+;; gptel to enable easy agentic LLM use.
+;;
+;; How to use:
+;;
+;; - Set `gptel-model' and `gptel-backend' to use your preferred LLM.
+;;
+;; - Run M-x `gptel-agent'.  This will open a buffer with the agent preset
+;;   loaded.
+;;
+;; - Use gptel as usual, calling `gptel-send' etc.
+;;
+;; - If you change the system prompt, tools or other settings in this buffer, you
+;;   can reset the agent state by (re)applying the "gptel-agent" preset from
+;;   gptel's menu.
+;;
+;; - As with gptel, you can use gptel-agent in any buffer.  Just apply the
+;;   "gptel-agent" preset in the buffer.
+;;
+;; gptel-agent can delegate tasks to "sub-agents".  Sub-agents can be specified
+;; in Markdown or Org files in a directory.  To see how to specify agents,
+;; examine the "agents" directory in this package.  You can add your directory
+;; of agents to `gptel-agent-dirs', which see.
+;;
+;; Please note: gptel-agent uses significantly more tokens than the average
+;; gptel LLM interaction.
+;;
 ;;; Code:
 
-(defvar gptel-agents-directories
-  (list (expand-file-name "./agents/"))
-  "Agent descriptions for gptel-agent.")
+(defcustom gptel-agents-dirs
+  (list (expand-file-name "./agents/" (file-name-directory load-file-name)))
+  "Agent definition directories for gptel-agent.
+
+Markdown (.md) and Org (.org) files in these directories will be scanned
+for gptel sub-agent definitions by gptel-agent."
+  :type '(repeat directory)
+  :group 'gptel-agent)
 
 (defvar gptel--agents nil)
 
-(defun gptel-agent--update ()
+(defun gptel-agent-update ()
   "Update `gptel--agents' with agent presets."
   (mapc (lambda (dir)
           (dolist (agent-file (cl-delete-if-not #'file-regular-p
@@ -38,19 +78,18 @@
                    (name (plist-get agent-plist :name)))
               (cl-remf agent-plist :name)
               (setf (alist-get name gptel--agents nil t 'equal)
-                    agent-plist))))
-        gptel-agents-directories))
+                    agent-plist)
+              (when (equal name "gptel-agent")
+                (apply #'gptel-make-preset 'gptel-agent agent-plist)))))
+        gptel-agents-dirs))
 
-(defvar gptel-agent-allowed-keys '(:name :description :tools :backend :model)
-  "Default list of allowed keys in subagent frontmatter.")
+;;; Sub-agent definition parsers for Markdown and Org
 
-(defun gptel-agent-default-validator (key)
-  "Default validator for frontmatter keys.
+(defalias 'gptel-agent-validator-default #'always)
 
-KEY is a keyword symbol to validate.
-
-Returns t if KEY is in `gptel-agent-allowed-keys', nil otherwise."
-  (memq key gptel-agent-allowed-keys))
+;; Parsing utilities for gptel subagent definition files, from
+;; - Markdown files with YAML frontmatter
+;; - Org files with PROPERTIES blocks
 
 (defun gptel-agent-parse-markdown-frontmatter (file-path &optional validator)
   "Parse a markdown file with optional YAML frontmatter.
@@ -59,7 +98,7 @@ FILE-PATH is the path to a markdown file.
 
 VALIDATOR is an optional predicate function that takes a keyword
 symbol and returns t if the key is allowed, nil otherwise.
-If not provided, defaults to `gptel-agent-default-validator'.
+If not provided, defaults to `gptel-agent-validator-default'.
 
 Returns a plist with:
 - All YAML frontmatter keys as keywords
@@ -71,7 +110,7 @@ Signals an error if:
 - The frontmatter block is malformed (opening without closing delimiter)
 - A key in the frontmatter is not allowed by the validator"
   (unless validator
-    (setq validator #'gptel-agent-default-validator))
+    (setq validator #'gptel-agent-validator-default))
   (require 'yaml)
 
   (with-temp-buffer
@@ -123,7 +162,7 @@ FILE-PATH is the path to an Org file.
 
 VALIDATOR is an optional predicate function that takes a keyword
 symbol and returns t if the key is allowed, nil otherwise.
-If not provided, defaults to `gptel-agent-default-validator'.
+If not provided, defaults to `gptel-agent-validator-default'.
 
 The function expects a :PROPERTIES: block at the top of the file
 (before any headlines), with keys like name, description, tools,
@@ -139,9 +178,7 @@ If no property block exists, returns nil.
 Signals an error if:
 - A key in the property block is not allowed by the validator"
   (unless validator
-    (setq validator #'gptel-agent-default-validator))
-
-  (require 'org)
+    (setq validator #'gptel-agent-validator-default))
 
   (with-temp-buffer
     (insert-file-contents file-path)
@@ -187,6 +224,37 @@ Signals an error if:
             ;; Add the body as :system key
             (plist-put props-plist :system body-str)))))))
 
-(provide 'gptel-agent-parsers)
+;;; Commands
 
-;;; gptel-agent-parsers.el ends here
+(defun gptel-agent (&optional project-dir agent-preset)
+  "Start a gptel-agent session in the current project."
+  (interactive
+   (list (if current-prefix-arg
+             (funcall project-prompter)
+           (or (project-root (project-current))
+               default-directory))
+         'gptel-agent))
+  (let ((gptel-buf
+         (gptel (generate-new-buffer-name
+                 (format "*gptel-agent:%s*"
+                         (cadr (nreverse (file-name-split project-dir)))))
+                nil
+                (and (use-region-p)
+                     (buffer-substring (region-beginning)
+                                       (region-end)))
+                'interactive)))
+    (with-current-buffer gptel-buf
+      (setq default-directory project-dir)
+      (gptel-agent-update)              ;Update all agent definitions
+      (gptel--apply-preset              ;Apply the gptel-agent preset
+       'gptel-agent (lambda (sym val) (set (make-local-variable sym) val)))
+      (when gptel-use-header-line
+        (setcar header-line-format
+                '(:eval (concat
+                         (propertize " " 'display '(space :align-to 0))
+                         (format "%s" (gptel-backend-name gptel-backend))
+                         (propertize "[Agent]"))))))))
+
+(provide 'gptel-agent)
+
+;;; gptel-agent.el ends here

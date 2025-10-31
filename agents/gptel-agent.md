@@ -1,5 +1,5 @@
 ---
-name: default
+name: gptel-agent
 description: The default gptel-agent
 tools:
   - agent_task
