@@ -913,7 +913,7 @@ PROMPT is the detailed prompt instructing the agent on what is required."
               ('nil
                (delete-overlay ov)
                (funcall main-cb
-                        (format "Error: Task %s could not finish task %s.
+                        (format "Error: Task %s could not finish task \"%s\".
 
 Error details: %S"
                                 agent-type description (plist-get info :error))))
@@ -929,7 +929,13 @@ Error details: %S"
                  (delete-overlay ov)
                  (when-let* ((transformer (plist-get info :transformer)))
                    (setq partial (funcall transformer partial)))
-                 (funcall main-cb partial))))))))))
+                 (funcall main-cb partial)))
+              ('abort
+               (delete-overlay ov)
+               (funcall main-cb
+                        (format "Error: Task \"%s\" was aborted by the user.
+%s could not finish."
+                                description agent-type))))))))))
 
 
 ;;; All tool declarations
