@@ -59,8 +59,10 @@
   (propertize "\n" 'face '(:inherit shadow :underline t :extend t)))
 
 ;;; Tool use preview
-(defun gptel-agent--confirm-overlay (from to)
-  "Set up tool call preview overlay FROM TO."
+(defun gptel-agent--confirm-overlay (from to &optional no-hide)
+  "Set up tool call preview overlay FROM TO.
+
+If NO-HIDE is non-nil, don't hide the overlay body by default."
   (let ((ov (make-overlay from to nil t)))
     (overlay-put ov 'evaporate t)
     (overlay-put ov 'gptel-agent-tool t)
@@ -74,7 +76,8 @@
                     "<tab>" 'gptel-agent--cycle-overlay
                     "TAB"   'gptel-agent--cycle-overlay)
                   gptel-tool-call-actions-map))
-    (gptel-agent--cycle-overlay ov)
+    (unless no-hide
+      (gptel-agent--cycle-overlay ov))
     ov))
 
 (defun gptel-agent--cycle-overlay (ov)
@@ -197,7 +200,21 @@ properties persist through refontification."
     (insert "\n\n")
     (font-lock-append-text-property
      inner-from (1- (point)) 'font-lock-face (gptel-agent--block-bg))
-    (gptel-agent--confirm-overlay from (point))))
+    (gptel-agent--confirm-overlay from (point) t)))
+
+(defun gptel-agent--execute-bash-preview-setup (arg-values _info)
+  (let ((command (car arg-values))
+        (from (point)) (inner-from))
+    (insert
+     "(" (propertize "execute_bash" 'font-lock-face 'font-lock-keyword-face)
+     ")\n")
+    (setq inner-from (point))
+    (insert command)
+    (gptel-agent--fontify-block 'sh-mode inner-from (point))
+    (insert "\n\n")
+    (font-lock-append-text-property
+     inner-from (1- (point)) 'font-lock-face (gptel-agent--block-bg))
+    (gptel-agent--confirm-overlay from (point) t)))
 
 ;;; Web tools
 
@@ -1043,7 +1060,7 @@ ARG-VALUES is a list: (type description prompt)"
                              'wrap-prefix "  "
                              'font-lock-face 'font-lock-constant-face)
             ")\n\n")
-    (gptel-agent--confirm-overlay from (point))))
+    (gptel-agent--confirm-overlay from (point) t)))
 
 (defun gptel-agent--indicate-wait (fsm)
   (when-let* ((info (gptel-fsm-info fsm))
@@ -1171,6 +1188,7 @@ Error details: %S"
 (pcase-dolist (`(,tool-name . ,setup-fn)
                `(("write_file"     ,#'gptel-agent--write-file-preview-setup)
                  ("eval_elisp"     ,#'gptel-agent--eval-elisp-preview-setup)
+                 ("execute_bash"   ,#'gptel-agent--execute-bash-preview-setup)
                  ("edit_files"     ,#'gptel-agent--edit-files-preview-setup)
                  ("insert_in_file" ,#'gptel-agent--insert-in-file-preview-setup)
                  ("agent_task"     ,#'gptel-agent--task-preview-setup)))
