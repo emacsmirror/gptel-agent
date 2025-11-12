@@ -1361,8 +1361,7 @@ too."
                 "Whether low-severity diagnostics (notes) should also be collected."
                 :optional t))
  :category "gptel-agent"
- :include t
- :confirm t)
+ :include t)
 
 (gptel-make-tool
  :name "Mkdir"
