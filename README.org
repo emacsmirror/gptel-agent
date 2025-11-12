@@ -37,9 +37,9 @@ Or from =use-package= (Emacs 30+):
 
 #+begin_src emacs-lisp
 (use-package gptel-agent
-  :vc ( :url "https://github.com/karthink/gptel-agent.git"
+  :vc ( :url "https://github.com/karthink/gptel-agent"
         :rev :newest)
-  :config (gptel-agent-upate))
+  :config (gptel-agent-update))         ;Read files from agents directories
 #+end_src
 
 
@@ -67,8 +67,10 @@ Or from =use-package=:
 #+html: </details>
 *** How to use:
 
-- Ensure that gptel is up to date.  Set =gptel-model= and =gptel-backend= to use
-  your preferred LLM.  See [[https://github.com/karthink/gptel][gptel's README]] for details.
+- Important: ensure that gptel is up to date, and not just the latest stable release!
+
+- Set =gptel-model= and =gptel-backend= to use your preferred LLM.  See [[https://github.com/karthink/gptel][gptel's
+  README]] for details.
 
 There are two ways to use gptel-agent:
 
