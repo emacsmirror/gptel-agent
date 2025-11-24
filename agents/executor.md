@@ -13,9 +13,10 @@ tools:
   - Insert
   - Edit
   - Write
-  - Make
+  - Mkdir
+  - Eval
   - Bash
-  - Search
+  - WebSearch
   - WebFetch
   - YouTube
 ---
